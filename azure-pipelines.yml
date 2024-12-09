@@ -1,0 +1,59 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: Build
+  displayName: Install and Build artifacts
+  jobs: 
+  - job: buildArtifacts
+    displayName: Build artifacts
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '16.x'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm install -g @angular/cli
+        npm install
+        ng build
+      displayName: 'npm install and build'
+  
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish BuildArtifacts'
+      inputs:
+        PathtoPublish: 'dist'
+        ArtifactName: 'dist'
+
+- stage: Deploy
+  displayName: 'AzureBlob File Copy'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+    - deployment: deployTaskManagerFrontend
+      displayName: 'Deploy'
+      environment: 'stage'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download the Pipeline Artifact'
+              inputs:
+                artifactName: 'dist'
+                targetPath: '$(System.DefaultWorkingDirectory)/_storage/dist/angular-devops'
+      
+            -  task: AzureCLI@1
+               displayName: Deploy the UI
+               inputs:
+                 azureSubscription: 'Free Trial(d0d16648-c69e-40ef-9ff6-3551f4fcec30)'
+                 scriptLocation: inlineScript
+                 inlineScript: |
+                   az storage blob upload-batch \
+                   --destination \$web \
+                   --account-name "angulardevops" \
+                   --source "$(System.DefaultWorkingDirectory)/_storage/dist/angular-devops"
+
